@@ -425,11 +425,17 @@ function checkGate(){
     const hoursSince = (now - lastDate) / (1000*60*60);
 
     if (hoursSince >= 72) {
+      // Rule 3: 72+ hours since last view — clear the stamp and show the gate.
+      localStorage.removeItem(GATE_KEY);
       document.getElementById('gateScreen').style.display = 'flex';
-      localStorage.setItem(GATE_KEY, now.toISOString());
       return;
     }
+    // Rule 2: under 72 hours — reset the stamp to now and show content.
+    localStorage.setItem(GATE_KEY, now.toISOString());
+    render();
+    return;
   }
+  // Rule 1: no stamp exists — set it and show content.
   localStorage.setItem(GATE_KEY, now.toISOString());
   render();
 }
