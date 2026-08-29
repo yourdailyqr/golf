@@ -161,7 +161,7 @@
     -webkit-tap-highlight-color: transparent;
   }
   .nav-arrow:disabled {
-    color: rgba(244, 231, 193, 0.25);
+    color: rgba(160, 160, 155, 0.55);
     cursor: default;
   }
   .nav-label {
@@ -280,6 +280,7 @@
     <div class="content-area" id="contentArea">
       <div class="entry-title" id="entryTitle"></div>
       <div class="entry-body" id="entryBody"></div>
+      <div class="quote-attribution" id="quoteAttribution"></div>
     </div>
     <div class="divider"></div>
     <div class="footer">
@@ -298,7 +299,7 @@
     <div class="gate-content">
       <div class="gate-title">The Daily Golf</div>
     <div class="gate-message">Oops. It's been a little while. Looks like you need to rescan the QR code to see today's round.</div>
-    <button class="gate-preview-btn" onclick="localStorage.removeItem(GATE_KEY); location.reload();">Tap to reset &amp; preview</button>
+    <button class="gate-preview-btn" onclick="localStorage.removeItem(GATE_KEY); document.getElementById('gateScreen').style.display='flex';">Tap to reset &amp; preview</button>
     </div>
     <div class="gate-footer">www.yourdailyqr.com</div>
   </div>
@@ -354,6 +355,7 @@ function autoSizeText(){
   const container = document.getElementById('contentArea');
   const titleEl = document.getElementById('entryTitle');
   const bodyEl = document.getElementById('entryBody');
+  const attrEl = document.getElementById('quoteAttribution');
 
   let lo = 13, hi = 41;
   const cs = getComputedStyle(container);
@@ -363,12 +365,14 @@ function autoSizeText(){
   const padRight = parseFloat(cs.paddingRight) || 0;
   const maxH = container.clientHeight - padTop - padBottom;
   const maxW = container.clientWidth - padLeft - padRight;
+  const attrVisible = attrEl.style.display !== 'none';
 
   function fits(size){
     titleEl.style.fontSize = (size*1.1) + "px";
     bodyEl.style.fontSize = size + "px";
+    attrEl.style.fontSize = (size*0.55) + "px";
     // force reflow measure
-    const totalH = titleEl.scrollHeight + bodyEl.scrollHeight + 10;
+    const totalH = titleEl.scrollHeight + bodyEl.scrollHeight + (attrVisible ? attrEl.scrollHeight + 8 : 0) + 10;
     return totalH <= maxH && titleEl.scrollWidth <= maxW + 2 && bodyEl.scrollWidth <= maxW + 2;
   }
 
@@ -380,6 +384,7 @@ function autoSizeText(){
   }
   titleEl.style.fontSize = (best*1.1) + "px";
   bodyEl.style.fontSize = best + "px";
+  attrEl.style.fontSize = (best*0.55) + "px";
 }
 
 function render(){
@@ -388,8 +393,24 @@ function render(){
 
   document.getElementById('dateLine').textContent = MONTHS[dt.getMonth()] + " " + dt.getDate();
   document.getElementById('categoryPill').textContent = entry.cat.toUpperCase();
-  document.getElementById('entryTitle').textContent = entry.title;
-  document.getElementById('entryBody').textContent = entry.body;
+
+  const titleEl = document.getElementById('entryTitle');
+  const bodyEl = document.getElementById('entryBody');
+  const attrEl = document.getElementById('quoteAttribution');
+
+  if (entry.cat === "Legendary Quotes") {
+    titleEl.textContent = '';
+    titleEl.style.display = 'none';
+    bodyEl.textContent = entry.body;
+    attrEl.textContent = '— ' + entry.title;
+    attrEl.style.display = 'block';
+  } else {
+    titleEl.textContent = entry.title;
+    titleEl.style.display = 'block';
+    bodyEl.textContent = entry.body;
+    attrEl.textContent = '';
+    attrEl.style.display = 'none';
+  }
 
   // image cycles sequentially by day-of-year index (entry.idx), 24 images
   const imgIdx = entry.idx % IMAGES.length;
@@ -424,46 +445,24 @@ document.getElementById('app').addEventListener('touchend', (e) => {
 window.addEventListener('resize', () => autoSizeText());
 
 /* ============ GATE LOGIC ============ */
-/* Pure rolling 72-hour check: gate shows only if MORE than 72 real hours
-   have passed since the last time this page was opened on this device.
-   Calendar day has no bearing on this — only elapsed time. */
+/* Gate logic, matching the his-mercies reference architecture:
+   Rule 1: any fresh load (QR scan, typed URL, reload) always shows content
+   immediately and refreshes the activity stamp — no threshold check here.
+   Rule 2: the 72-hour threshold is only ever checked when an ALREADY-OPEN
+   tab/window regains focus (visibilitychange) without an intervening load. */
 const GATE_KEY = 'ydq_dailygolf_last_view_ts';
 
-function checkGate(){
-  const now = new Date();
-  const last = localStorage.getItem(GATE_KEY);
-
-  if (last) {
-    const lastDate = new Date(last);
-    const hoursSince = (now - lastDate) / (1000*60*60);
-
-    if (hoursSince >= 72) {
-      // Rule 3: 72+ hours since last view — clear the stamp and show the gate.
-      localStorage.removeItem(GATE_KEY);
-      document.getElementById('gateScreen').style.display = 'flex';
-      return;
-    }
-    // Rule 2: under 72 hours — reset the stamp to now and show content.
-    localStorage.setItem(GATE_KEY, now.toISOString());
-    render();
-    return;
-  }
-  // Rule 1: no stamp exists — set it and show content.
-  localStorage.setItem(GATE_KEY, now.toISOString());
+function showOnLoad(){
+  localStorage.setItem(GATE_KEY, String(Date.now()));
   render();
 }
 
-/* Re-check on tab focus: if content is showing but 72+ hours have passed
-   since the stamp while the tab was backgrounded, gate it now rather than
-   waiting for a manual reload. If the gate is already showing, leave it —
-   getting back in requires an actual rescan/reload (rule 4), not just
-   refocusing the tab. */
 function checkVisibilityGate(){
   const gateEl = document.getElementById('gateScreen');
   if (gateEl.style.display === 'flex') return;
-  const last = localStorage.getItem(GATE_KEY);
-  if (!last) return;
-  const hoursSince = (new Date() - new Date(last)) / (1000*60*60);
+  const stampStr = localStorage.getItem(GATE_KEY);
+  if (!stampStr) return;
+  const hoursSince = (Date.now() - parseInt(stampStr, 10)) / (1000*60*60);
   if (hoursSince >= 72) {
     localStorage.removeItem(GATE_KEY);
     gateEl.style.display = 'flex';
@@ -475,7 +474,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-checkGate();
+showOnLoad();
 </script>
 </body>
 </html>
